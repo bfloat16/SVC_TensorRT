@@ -12,7 +12,6 @@ import pycuda.driver as cuda
 import pycuda.autoinit # This is needed for initializing CUDA driver
 
 from collections import OrderedDict
-from prettytable import PrettyTable
 import hashlib
 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
