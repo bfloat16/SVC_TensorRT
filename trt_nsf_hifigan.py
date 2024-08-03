@@ -164,42 +164,27 @@ def wav2spec(wav_torch, sr=44100, key_shift=0, speed=1.0, mel_transform=None, us
     mel_torch = mel_transform(wav_torch, key_shift=key_shift, speed=speed)[0]
     mel_torch = dynamic_range_compression(mel_torch)
 
-    if use_natural_log is False:
-        mel_torch = 0.434294 * mel_torch
-
     return mel_torch
 
-def main(wav, nsf, hifigan, shapes, precision, max_workspace_size):
+def main(wav, nsf, hifigan, shapes_nsf, shapes_hifigan, max_workspace_size):
     time_start = time()
-    engine = load_engine(hifigan, shapes, precision, max_workspace_size)
+    engine_nsf = load_engine(nsf, shapes_nsf, "fp32", max_workspace_size)
+    engine_hifigan = load_engine(hifigan, shapes_hifigan, "fp16", max_workspace_size)
 
-    trt_inference = TRT_Inference(engine)
+    trt_nsf = TRT_Inference(engine_nsf)
+    trt_hifigan = TRT_Inference(engine_hifigan)
     time_end = time()
-    print(f"Hifigan engine loaded in {time_end - time_start:.2f} seconds")
-
-    time_start = time()
-    nsf_session = ort.InferenceSession(nsf) # 别用CUDA！
-    time_end = time()
-    print(f"NSF session    loaded in {time_end - time_start:.2f} seconds")
+    print(f"engine loaded in {time_end - time_start:.2f} seconds")
 
     filelist = glob(f"{wav}/*.wav", recursive=True)
     for wav in filelist:
         print(f"Processing {wav}")
         audio, _ = torchaudio.load(wav)
 
-        time_start = time()
         mel_transform = PitchAdjustableMelSpectrogram()
         mel = wav2spec(audio, mel_transform=mel_transform)
-        time_end = time()
-        print(f"Mel computed in {time_end - time_start:.3f} seconds")
 
-        time_start = time()
         f0 = ParselMouthPitchExtractor(f0_min=40.0, f0_max=2000.0, keep_zeros=False)(audio, 44100, pad_to=mel.shape[-1])
-        time_end = time()
-        print(f"F0  computed in {time_end - time_start:.3f} seconds")
-
-        if mel.shape[1] > shapes["mel"][2][1]:
-            raise ValueError(f"mel length {mel.shape[1]} exceeds maximum length {shapes['mel'][2][1]}")
 
         c = mel[None]
         c = c.permute(0, 2, 1)
@@ -207,14 +192,15 @@ def main(wav, nsf, hifigan, shapes, precision, max_workspace_size):
 
         nsf_inputs = {"f0": f0.numpy()}
         time_start = time()
-        nsf_outputs = nsf_session.run(None, nsf_inputs)
+        nsf_outputs = trt_nsf.infer(nsf_inputs)
         time_end = time()
         print(f"NSF     inference done in {time_end - time_start:.3f} seconds")
-        Tanh_output_0 = nsf_outputs[0]
+
+        Tanh_output_0 = nsf_outputs['/generator/m_source/l_tanh/Tanh_output_0']
 
         hifigan_inputs = {"mel": c.numpy(), "/generator/m_source/l_tanh/Tanh_output_0": Tanh_output_0}
         time_start = time()
-        outputs = trt_inference.infer(hifigan_inputs)
+        outputs = trt_hifigan.infer(hifigan_inputs)
         time_end = time()
         print(f"Hifigan inference done in {time_end - time_start:.3f} seconds")
         output = outputs['waveform'].flatten()
@@ -226,10 +212,9 @@ if __name__ == '__main__':
     input_nsf = "nsf.onnx"
     input_hifigan = "hifigan.onnx"
     max_workspace_size = 6 << 30  # 6 GB
-    precision = "fp16"
 
     shapes_nsf = { # (min, opt, max)
-    "f0": ((1, 128), (1, 1500), (1, 3000))
+    "f0": ((1, 2656), (1, 2656), (1, 2656))
     }
 
     shapes_hifigan = { # (min, opt, max)
@@ -237,4 +222,4 @@ if __name__ == '__main__':
     "/generator/m_source/l_tanh/Tanh_output_0": ((1, 1359872, 1), (1, 1359872, 1), (1, 1359872, 1))
     }
 
-    main(input_wav, input_nsf, input_hifigan, shapes_hifigan, precision, max_workspace_size)
+    main(input_wav, input_nsf, input_hifigan, shapes_nsf, shapes_hifigan, max_workspace_size)
