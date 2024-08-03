@@ -2,5 +2,5 @@
 
 | Model Name  | Output Validation | Availability | Remark             |
 | ----------- | ----------------- | ------------ | ------------------ |
-| nsf_hifigan | √                 | √            | NSF part is slow   |
+| nsf_hifigan | √                 | √            | √                  |
 | contentvec  | x                 | ?            |                    |
