@@ -166,13 +166,13 @@ def wav2spec(wav_torch, sr=44100, key_shift=0, speed=1.0, mel_transform=None, us
     return mel_torch
 
 # 加载模型
-nsf_model_path = 'nsf.onnx'
-hifigan_model_path = 'hifigan.onnx'
+nsf_model_path = 'nsf_0.onnx'
+hifigan_model_path = 'hifigan_0.onnx'
 
 nsf_session = ort.InferenceSession(nsf_model_path)
 hifigan_session = ort.InferenceSession(hifigan_model_path)
 
-wav = "コトダマ紡ぐ未来.wav"
+wav = "wav\コトダマ紡ぐ未来.wav"
 audio, _ = torchaudio.load(wav)
 
 mel_transform = PitchAdjustableMelSpectrogram()

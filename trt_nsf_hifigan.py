@@ -8,6 +8,7 @@ from time import time
 import parselmouth
 import torchaudio
 import librosa
+from glob import glob
 import soundfile as sf
 from librosa.filters import mel as librosa_mel_fn
 
@@ -181,48 +182,51 @@ def main(wav, nsf, hifigan, shapes, precision, max_workspace_size):
     time_end = time()
     print(f"NSF session    loaded in {time_end - time_start:.2f} seconds")
 
-    audio, _ = torchaudio.load(wav)
+    filelist = glob(f"{wav}/*.wav", recursive=True)
+    for wav in filelist:
+        print(f"Processing {wav}")
+        audio, _ = torchaudio.load(wav)
 
-    time_start = time()
-    mel_transform = PitchAdjustableMelSpectrogram()
-    mel = wav2spec(audio, mel_transform=mel_transform)
-    time_end = time()
-    print(f"Mel computed in {time_end - time_start:.3f} seconds")
+        time_start = time()
+        mel_transform = PitchAdjustableMelSpectrogram()
+        mel = wav2spec(audio, mel_transform=mel_transform)
+        time_end = time()
+        print(f"Mel computed in {time_end - time_start:.3f} seconds")
 
-    time_start = time()
-    f0 = ParselMouthPitchExtractor(f0_min=40.0, f0_max=2000.0, keep_zeros=False)(audio, 44100, pad_to=mel.shape[-1])
-    time_end = time()
-    print(f"F0  computed in {time_end - time_start:.3f} seconds")
+        time_start = time()
+        f0 = ParselMouthPitchExtractor(f0_min=40.0, f0_max=2000.0, keep_zeros=False)(audio, 44100, pad_to=mel.shape[-1])
+        time_end = time()
+        print(f"F0  computed in {time_end - time_start:.3f} seconds")
 
-    if mel.shape[1] > shapes["mel"][2][1]:
-        raise ValueError(f"mel length {mel.shape[1]} exceeds maximum length {shapes['mel'][2][1]}")
+        if mel.shape[1] > shapes["mel"][2][1]:
+            raise ValueError(f"mel length {mel.shape[1]} exceeds maximum length {shapes['mel'][2][1]}")
 
-    c = mel[None]
-    c = c.permute(0, 2, 1)
-    f0 = f0[None].to(c.dtype)
+        c = mel[None]
+        c = c.permute(0, 2, 1)
+        f0 = f0[None].to(c.dtype)
 
-    nsf_inputs = {"f0": f0.numpy()}
-    time_start = time()
-    nsf_outputs = nsf_session.run(None, nsf_inputs)
-    time_end = time()
-    print(f"NSF     inference done in {time_end - time_start:.3f} seconds")
-    Tanh_output_0 = nsf_outputs[0]
+        nsf_inputs = {"f0": f0.numpy()}
+        time_start = time()
+        nsf_outputs = nsf_session.run(None, nsf_inputs)
+        time_end = time()
+        print(f"NSF     inference done in {time_end - time_start:.3f} seconds")
+        Tanh_output_0 = nsf_outputs[0]
 
-    hifigan_inputs = {"mel": c.numpy(), "/generator/m_source/l_tanh/Tanh_output_0": Tanh_output_0}
-    time_start = time()
-    outputs = trt_inference.infer(hifigan_inputs)
-    time_end = time()
-    print(f"Hifigan inference done in {time_end - time_start:.3f} seconds")
-    output = outputs['waveform'].flatten()
+        hifigan_inputs = {"mel": c.numpy(), "/generator/m_source/l_tanh/Tanh_output_0": Tanh_output_0}
+        time_start = time()
+        outputs = trt_inference.infer(hifigan_inputs)
+        time_end = time()
+        print(f"Hifigan inference done in {time_end - time_start:.3f} seconds")
+        output = outputs['waveform'].flatten()
 
-    sf.write("output.wav", output, 44100)
+        sf.write("output.wav", output, 44100)
 
 if __name__ == '__main__':
-    input_wav = "コトダマ紡ぐ未来.wav"
+    input_wav = "wav"
     input_nsf = "nsf.onnx"
     input_hifigan = "hifigan.onnx"
     max_workspace_size = 6 << 30  # 6 GB
-    precision = "fp32"
+    precision = "fp16"
 
     shapes_nsf = { # (min, opt, max)
     "f0": ((1, 128), (1, 1500), (1, 3000))

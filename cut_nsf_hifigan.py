@@ -1,6 +1,6 @@
 import onnx
 
-input_model_path = 'nsf_hifigan_44.1k_hop512_128bin_2024.onnx'
+input_model_path = 'nsf_hifigan.onnx'
 nsf_model_path = 'nsf.onnx'
 hifigan_model_path = 'hifigan.onnx'
 
