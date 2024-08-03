@@ -12,8 +12,6 @@ from glob import glob
 import soundfile as sf
 from librosa.filters import mel as librosa_mel_fn
 
-import onnxruntime as ort
-
 # https://github.com/fishaudio/fish-diffusion/blob/main/tests/test_nsf_hifigan.py
 def repeat_expand(content, target_len, mode="nearest"):
     ndim = content.ndim

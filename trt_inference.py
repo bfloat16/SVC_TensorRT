@@ -18,7 +18,7 @@ import hashlib
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 
 def calculate_hash(*args) -> str:
-    hash_object = hashlib.sha256()
+    hash_object = hashlib.sha1()
     for arg in args:
         hash_object.update(str(arg).encode('utf-8'))
     return hash_object.hexdigest()
@@ -35,10 +35,9 @@ def build_engine(onnx_model_path, shapes, precision, max_workspace_size):
         return False
     
     # Create a TRT logger and builder
-    logger = trt.Logger(trt.Logger.WARNING)
-    builder = trt.Builder(logger)
+    builder = trt.Builder(TRT_LOGGER)
     network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-    parser = trt.OnnxParser(network, logger)
+    parser = trt.OnnxParser(network, TRT_LOGGER)
 
     with open(onnx_model_path, 'rb') as model_file:
         if not parser.parse(model_file.read()):
@@ -103,7 +102,7 @@ def load_engine(onnx_model_path, shapes, precision, max_workspace_size):
         sys.exit(1)
     
     engine_path = os.path.splitext(onnx_model_path)[0] + ".engine"
-    runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
+    runtime = trt.Runtime(TRT_LOGGER)
     
     with open(engine_path, 'rb') as f:
         engine = runtime.deserialize_cuda_engine(f.read())
