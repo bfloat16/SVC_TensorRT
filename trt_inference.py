@@ -3,8 +3,9 @@ import sys
 
 # Recommended use vsmlrt-cuda for TensorRT inference
 # https://github.com/AmusementClub/vs-mlrt/releases
-vsmlrt_cuda = r"C:\Users\OOPPEENN\AppData\Roaming\VideoJaNai\python\vs-plugins\vsmlrt-cuda"
-os.environ["PATH"] = os.pathsep.join([vsmlrt_cuda, os.environ.get("PATH", "")])
+cuda_runtime = r"D:\AI\SVC_TensorRT"
+os.environ["PATH"] = os.pathsep.join([f"{cuda_runtime}/bin", os.environ.get("PATH", "")])
+os.environ['CUDA_PATH'] = cuda_runtime
 
 import tensorrt as trt
 import numpy as np

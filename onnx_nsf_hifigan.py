@@ -1,10 +1,7 @@
-from trt_inference import load_engine, TRT_Inference
-
 import torch
 import torch.nn as nn
 import numpy as np
 
-from time import time
 import parselmouth
 import torchaudio
 import librosa
@@ -168,69 +165,40 @@ def wav2spec(wav_torch, sr=44100, key_shift=0, speed=1.0, mel_transform=None, us
 
     return mel_torch
 
-def main(wav, nsf, hifigan, shapes, precision, max_workspace_size):
-    time_start = time()
-    engine = load_engine(hifigan, shapes, precision, max_workspace_size)
+# 加载模型
+nsf_model_path = 'nsf.onnx'
+hifigan_model_path = 'hifigan.onnx'
 
-    trt_inference = TRT_Inference(engine)
-    time_end = time()
-    print(f"Hifigan engine loaded in {time_end - time_start:.2f} seconds")
+nsf_session = ort.InferenceSession(nsf_model_path)
+hifigan_session = ort.InferenceSession(hifigan_model_path)
 
-    time_start = time()
-    nsf_session = ort.InferenceSession(nsf) # 别用CUDA！
-    time_end = time()
-    print(f"NSF session    loaded in {time_end - time_start:.2f} seconds")
+wav = "コトダマ紡ぐ未来.wav"
+audio, _ = torchaudio.load(wav)
 
-    audio, _ = torchaudio.load(wav)
+mel_transform = PitchAdjustableMelSpectrogram()
+mel = wav2spec(audio, mel_transform=mel_transform)
 
-    time_start = time()
-    mel_transform = PitchAdjustableMelSpectrogram()
-    mel = wav2spec(audio, mel_transform=mel_transform)
-    time_end = time()
-    print(f"Mel computed in {time_end - time_start:.3f} seconds")
+f0 = ParselMouthPitchExtractor(f0_min=40.0, f0_max=2000.0, keep_zeros=False)(audio, 44100, pad_to=mel.shape[-1])
 
-    time_start = time()
-    f0 = ParselMouthPitchExtractor(f0_min=40.0, f0_max=2000.0, keep_zeros=False)(audio, 44100, pad_to=mel.shape[-1])
-    time_end = time()
-    print(f"F0  computed in {time_end - time_start:.3f} seconds")
+c = mel[None]
+c = c.permute(0, 2, 1)
+f0 = f0[None].to(c.dtype)
 
-    if mel.shape[1] > shapes["mel"][2][1]:
-        raise ValueError(f"mel length {mel.shape[1]} exceeds maximum length {shapes['mel'][2][1]}")
+print(c.shape)
+nsf_inputs = {"f0": f0.numpy()}
+nsf_outputs = nsf_session.run(None, nsf_inputs)
+Tanh_output_0 = nsf_outputs[0]
+print(Tanh_output_0.shape)
 
-    c = mel[None]
-    c = c.permute(0, 2, 1)
-    f0 = f0[None].to(c.dtype)
 
-    nsf_inputs = {"f0": f0.numpy()}
-    time_start = time()
-    nsf_outputs = nsf_session.run(None, nsf_inputs)
-    time_end = time()
-    print(f"NSF     inference done in {time_end - time_start:.3f} seconds")
-    Tanh_output_0 = nsf_outputs[0]
+hifigan_inputs = {"mel": c.numpy(), "/generator/m_source/l_tanh/Tanh_output_0": Tanh_output_0}
+hifigan_outputs = hifigan_session.run(None, hifigan_inputs)
+waveform = hifigan_outputs[0]  # 确认输出是音频波形数据
+waveform = waveform.flatten()  # 将输出展平
+waveform = waveform.astype(np.float32)  # 确保数据类型为float32
 
-    hifigan_inputs = {"mel": c.numpy(), "/generator/m_source/l_tanh/Tanh_output_0": Tanh_output_0}
-    time_start = time()
-    outputs = trt_inference.infer(hifigan_inputs)
-    time_end = time()
-    print(f"Hifigan inference done in {time_end - time_start:.3f} seconds")
-    output = outputs['waveform'].flatten()
+# 使用soundfile保存为WAV文件
+output_wav_path = "output.wav"
+sf.write(output_wav_path, waveform, 44100)
 
-    sf.write("output.wav", output, 44100)
-
-if __name__ == '__main__':
-    input_wav = "コトダマ紡ぐ未来.wav"
-    input_nsf = "nsf.onnx"
-    input_hifigan = "hifigan.onnx"
-    max_workspace_size = 6 << 30  # 6 GB
-    precision = "fp32"
-
-    shapes_nsf = { # (min, opt, max)
-    "f0": ((1, 128), (1, 1500), (1, 3000))
-    }
-
-    shapes_hifigan = { # (min, opt, max)
-    "mel": ((1, 2656, 128), (1, 2656, 128), (1, 2656, 128)),
-    "/generator/m_source/l_tanh/Tanh_output_0": ((1, 1359872, 1), (1, 1359872, 1), (1, 1359872, 1))
-    }
-
-    main(input_wav, input_nsf, input_hifigan, shapes_hifigan, precision, max_workspace_size)
+print(f"音频文件已保存为 {output_wav_path}")
